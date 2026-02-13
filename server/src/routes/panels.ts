@@ -6,76 +6,34 @@ const router = Router();
 // Get all panels with optional filtering
 router.get('/', async (req: Request, res: Response) => {
   try {
-    console.log('Fetching panels from database...');
-    
     const { status, zone, search } = req.query;
-    
-    const where: any = {};
-    
-    if (status) {
-      where.status = status;
-    }
-    
-    if (zone) {
-      where.zone = { name: zone };
-    }
-    
-    if (search) {
-      where.panelId = { contains: String(search), mode: 'insensitive' };
-    }
+    const zoneFilter = typeof zone === 'string' && ['A', 'B'].includes(zone) ? zone : undefined;
 
-    console.log('Query where:', JSON.stringify(where));
+    const where = {
+      row: { lte: 3 },
+      column: { lte: 3 },
+      zone: zoneFilter
+        ? { is: { name: zoneFilter } }
+        : { is: { name: { in: ['A', 'B'] } } },
+      ...(typeof status === 'string' ? { status } : {}),
+      ...(typeof search === 'string' && search.trim()
+        ? { panelId: { contains: search.trim(), mode: 'insensitive' as const } }
+        : {}),
+    };
 
-    // First get panels without the zone include to avoid relation errors
     const panels = await prisma.solarPanel.findMany({
       where,
-      orderBy: { panelId: 'asc' },
-      take: 100,
+      include: { zone: true },
+      orderBy: [{ zone: { name: 'asc' } }, { row: 'asc' }, { column: 'asc' }],
     });
 
-    console.log(`Found ${panels.length} panels`);
-
-    // Transform data to include zone name
-    const panelsWithZone = await Promise.all(panels.map(async (panel) => {
-      let zoneName = 'Unknown';
-      if (panel.zoneId) {
-        try {
-          const zone = await prisma.zone.findUnique({
-            where: { id: panel.zoneId }
-          });
-          zoneName = zone?.name || 'Unknown';
-        } catch (e) {
-          console.warn(`Could not find zone for panel ${panel.panelId}`);
-        }
-      }
-      
-      return {
-        id: panel.id,
-        panelId: panel.panelId,
-        row: panel.row,
-        column: panel.column,
-        zone: { id: panel.zoneId, name: zoneName },
-        zoneId: panel.zoneId,
-        status: panel.status,
-        efficiency: panel.efficiency,
-        currentOutput: panel.currentOutput,
-        maxOutput: panel.maxOutput,
-        temperature: panel.temperature,
-        lastChecked: panel.lastChecked,
-        installDate: panel.installDate,
-        inverterGroup: panel.inverterGroup,
-        stringId: panel.stringId,
-        createdAt: panel.createdAt,
-        updatedAt: panel.updatedAt,
-      };
-    }));
-
-    res.json(panelsWithZone);
-  } catch (error: any) {
-    console.error('Error fetching panels:', error.message);
+    res.json(panels);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching panels:', message);
     res.status(500).json({ 
       error: 'Failed to fetch panels', 
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+      details: process.env.NODE_ENV === 'development' ? message : undefined 
     });
   }
 });
@@ -118,8 +76,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
       maxCapacity: maxCapacity / 1000,
       efficiency: avgEfficiency._avg.efficiency || 0,
     });
-  } catch (error: any) {
-    console.error('Error fetching panel stats:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching panel stats:', message);
     res.status(500).json({ error: 'Failed to fetch panel statistics' });
   }
 });
@@ -147,8 +106,9 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     res.json(panel);
-  } catch (error: any) {
-    console.error('Error fetching panel:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching panel:', message);
     res.status(500).json({ error: 'Failed to fetch panel' });
   }
 });
@@ -164,8 +124,9 @@ router.get('/zone/:zoneName', async (req: Request, res: Response) => {
     });
 
     res.json(panels);
-  } catch (error: any) {
-    console.error('Error fetching zone panels:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching zone panels:', message);
     res.status(500).json({ error: 'Failed to fetch zone panels' });
   }
 });

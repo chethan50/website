@@ -221,20 +221,28 @@ export default function PanelGrid() {
 
             <div className="overflow-auto rounded-lg border bg-card p-4">
               <div 
-                className="grid gap-4"
-                style={{ 
-                  gridTemplateColumns: `repeat(${selectedZone === 'all' ? Math.min(zones.length, 4) : 1}, minmax(0, 1fr))`,
+                className="flex flex-wrap items-start gap-4"
+                style={{
                   transform: `scale(${zoomLevel})`,
                   transformOrigin: 'top left',
                 }}
               >
                 {(selectedZone === 'all' ? zones : [selectedZone]).map(zone => (
-                  <div key={zone} className="rounded-lg border bg-muted/30 p-3">
+                  <div key={zone} className="w-[220px] rounded-lg border bg-muted/30 p-3">
+                    {(() => {
+                      const zonePanels = panelsByZone[zone] || [];
+                      const maxCol = Math.max(...zonePanels.map(p => p.column), 1);
+                      const sortedZonePanels = [...zonePanels].sort((a, b) =>
+                        a.row === b.row ? a.column - b.column : a.row - b.row
+                      );
+
+                      return (
+                        <>
                     <h3 className="mb-2 text-sm font-semibold">
-                      Zone {zone} ({panelsByZone[zone]?.length || 0} panels)
+                      Zone {zone} ({zonePanels.length} panels)
                     </h3>
-                    <div className="grid grid-cols-10 gap-1">
-                      {panelsByZone[zone]?.map(panel => (
+                    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${maxCol}, minmax(0, 1fr))` }}>
+                      {sortedZonePanels.map(panel => (
                         <button
                           key={panel.id}
                           onClick={() => setSelectedPanel(panel)}
@@ -247,6 +255,9 @@ export default function PanelGrid() {
                         />
                       ))}
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -416,7 +427,6 @@ export default function PanelGrid() {
               <span className="text-muted-foreground">String</span>
               <span>{selectedPanel.stringId || 'N/A'}</span>
             </div>
-            <Button className="w-full mt-4" size="sm">Create Ticket</Button>
           </CardContent>
         </Card>
       )}
