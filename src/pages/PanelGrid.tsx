@@ -231,18 +231,20 @@ export default function PanelGrid() {
                   <div key={zone} className="w-[220px] rounded-lg border bg-muted/30 p-3">
                     {(() => {
                       const zonePanels = panelsByZone[zone] || [];
-                      const maxCol = Math.max(...zonePanels.map(p => p.column), 1);
                       const sortedZonePanels = [...zonePanels].sort((a, b) =>
                         a.row === b.row ? a.column - b.column : a.row - b.row
                       );
+                      const matrixPanels = sortedZonePanels
+                        .filter(panel => panel.row <= 3 && panel.column <= 3)
+                        .slice(0, 9);
 
                       return (
                         <>
                     <h3 className="mb-2 text-sm font-semibold">
-                      Zone {zone} ({zonePanels.length} panels)
+                      Zone {zone} ({matrixPanels.length} panels)
                     </h3>
-                    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${maxCol}, minmax(0, 1fr))` }}>
-                      {sortedZonePanels.map(panel => (
+                    <div className="grid grid-cols-3 gap-1">
+                      {matrixPanels.map(panel => (
                         <button
                           key={panel.id}
                           onClick={() => setSelectedPanel(panel)}
