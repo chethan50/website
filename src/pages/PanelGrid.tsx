@@ -34,6 +34,21 @@ interface PanelData {
   sensorPowerMw?: number | null;
 }
 
+interface RowGroupData {
+  key: string;
+  zone: string;
+  row: number;
+  panels: PanelData[];
+  deviceId: string | null;
+  status: 'healthy' | 'warning' | 'fault' | 'offline';
+  totalOutputW: number;
+  totalMaxOutputW: number;
+  efficiency: number;
+  currentA: number;
+  voltageV: number;
+  powerW: number;
+}
+
 const statusColors: Record<string, string> = {
   healthy: 'bg-success',
   warning: 'bg-warning',
@@ -55,7 +70,7 @@ export default function PanelGrid() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [selectedPanel, setSelectedPanel] = useState<PanelData | null>(null);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +129,67 @@ export default function PanelGrid() {
     acc[zone] = filteredPanels.filter(p => p.zone?.name === zone);
     return acc;
   }, {} as Record<string, PanelData[]>);
+
+  const rowGroups: RowGroupData[] = Object.entries(panelsByZone).flatMap(([zone, zonePanels]) => {
+    const groupedByRow = zonePanels.reduce((acc, panel) => {
+      if (!acc[panel.row]) acc[panel.row] = [];
+      acc[panel.row].push(panel);
+      return acc;
+    }, {} as Record<number, PanelData[]>);
+
+    return Object.entries(groupedByRow).map(([rowStr, rowPanels]) => {
+      const row = Number(rowStr);
+      const sortedPanels = [...rowPanels].sort((a, b) => a.column - b.column);
+      const status: RowGroupData['status'] =
+        sortedPanels.every((panel) => panel.status === 'offline')
+          ? 'offline'
+          : sortedPanels.some((panel) => panel.status === 'fault')
+          ? 'fault'
+          : sortedPanels.some((panel) => panel.status === 'warning')
+          ? 'warning'
+          : 'healthy';
+
+      const totalOutputW = sortedPanels.reduce((sum, panel) => sum + (panel.currentOutput || 0), 0);
+      const totalMaxOutputW = sortedPanels.reduce((sum, panel) => sum + (panel.maxOutput || 0), 0);
+      const efficiency = totalMaxOutputW > 0 ? (totalOutputW / totalMaxOutputW) * 100 : 0;
+      const devicePanel = sortedPanels.find((panel) => panel.sensorDeviceId);
+      const currentA = ((devicePanel?.sensorCurrentMa || 0) as number) / 1000;
+      const voltageV = (devicePanel?.sensorVoltage || 0) as number;
+      const powerW = ((devicePanel?.sensorPowerMw || 0) as number) / 1000;
+
+      return {
+        key: `${zone}-${row}`,
+        zone,
+        row,
+        panels: sortedPanels,
+        deviceId: devicePanel?.sensorDeviceId || null,
+        status,
+        totalOutputW,
+        totalMaxOutputW,
+        efficiency,
+        currentA,
+        voltageV,
+        powerW,
+      };
+    });
+  });
+
+  const visibleRows = rowGroups
+    .filter((rowGroup) => selectedZone === 'all' || rowGroup.zone === selectedZone)
+    .sort((a, b) => (a.zone === b.zone ? a.row - b.row : a.zone.localeCompare(b.zone)));
+  const visibleRowsByZone = visibleRows.reduce((acc, rowGroup) => {
+    if (!acc[rowGroup.zone]) acc[rowGroup.zone] = [];
+    acc[rowGroup.zone].push(rowGroup);
+    return acc;
+  }, {} as Record<string, RowGroupData[]>);
+
+  const selectedRow = selectedRowKey ? rowGroups.find((rowGroup) => rowGroup.key === selectedRowKey) || null : null;
+
+  useEffect(() => {
+    if (selectedRowKey && !visibleRows.some((rowGroup) => rowGroup.key === selectedRowKey)) {
+      setSelectedRowKey(null);
+    }
+  }, [visibleRows, selectedRowKey]);
 
   if (loading) {
     return (
@@ -242,41 +318,39 @@ export default function PanelGrid() {
                   transformOrigin: 'top left',
                 }}
               >
-                {(selectedZone === 'all' ? zones : [selectedZone]).map(zone => (
-                  <div key={zone} className="w-[220px] rounded-lg border bg-muted/30 p-3">
-                    {(() => {
-                      const zonePanels = panelsByZone[zone] || [];
-                      const sortedZonePanels = [...zonePanels].sort((a, b) =>
-                        a.row === b.row ? a.column - b.column : a.row - b.row
-                      );
-                      const matrixPanels = sortedZonePanels
-                        .filter(panel => panel.row <= 3 && panel.column <= 3)
-                        .slice(0, 9);
-
-                      return (
-                        <>
-                    <h3 className="mb-2 text-sm font-semibold">
-                      Zone {zone} ({matrixPanels.length} panels)
-                    </h3>
-                    <div className="grid grid-cols-3 gap-1">
-                      {matrixPanels.map(panel => (
-                        <button
-                          key={panel.id}
-                          onClick={() => setSelectedPanel(panel)}
-                          className={cn(
-                            'aspect-square rounded-sm transition-all hover:scale-110 hover:z-10',
-                            statusColors[panel.status] || 'bg-gray-400',
-                            selectedPanel?.id === panel.id && 'ring-2 ring-primary ring-offset-2'
-                          )}
-                          title={`${panel.panelId} - ${panel.status}`}
-                        />
-                      ))}
-                    </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                ))}
+                <div className="flex w-full flex-wrap gap-2">
+                  {Object.entries(visibleRowsByZone)
+                    .sort(([zoneA], [zoneB]) => zoneA.localeCompare(zoneB))
+                    .map(([zone, zoneRows]) => (
+                      <div key={zone} className="w-[190px] rounded-md border bg-muted/15 p-1.5">
+                        <h3 className="mb-1 text-xs font-semibold">Zone {zone}</h3>
+                        <div className="space-y-0.5">
+                          {zoneRows.map((rowGroup) => (
+                            <div key={rowGroup.key} className="flex items-center gap-1">
+                              <span className="w-10 text-[10px] font-semibold text-muted-foreground">Row {rowGroup.row}</span>
+                              <button
+                                onClick={() => setSelectedRowKey(rowGroup.key)}
+                                className={cn(
+                                  'h-[28px] w-[86px] rounded-[3px] border px-0 transition-colors',
+                                  selectedRowKey === rowGroup.key ? 'border-primary bg-primary/5' : 'bg-background',
+                                )}
+                              >
+                                <div className="flex items-center gap-px">
+                                  {rowGroup.panels.map((panel) => (
+                                    <div
+                                      key={panel.id}
+                                      className={cn('h-[28px] w-[28px] rounded-[2px]', statusColors[panel.status] || 'bg-gray-400')}
+                                      title={`${panel.panelId} - ${panel.status}`}
+                                    />
+                                  ))}
+                                </div>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
               </div>
             </div>
 
@@ -321,7 +395,7 @@ export default function PanelGrid() {
                               <div className="mb-2 flex items-center justify-between">
                                 <span className="text-sm font-medium">{inv}</span>
                                 <Badge variant={hasFault ? 'destructive' : 'secondary'} className="text-xs">
-                                  {invPanels.reduce((sum, p) => sum + p.currentOutput, 0).toFixed(0)}W
+                                  {invPanels.reduce((sum, p) => sum + p.currentOutput, 0).toFixed(0)} W
                                 </Badge>
                               </div>
                               <div className="space-y-1">
@@ -385,9 +459,9 @@ export default function PanelGrid() {
                             </Badge>
                           </TableCell>
                           <TableCell>{panel.efficiency?.toFixed(1) || '0'}%</TableCell>
-                          <TableCell>{panel.currentOutput || 0}W</TableCell>
-                          <TableCell>{panel.sensorVoltage?.toFixed(2) || 'N/A'}V</TableCell>
-                          <TableCell>{panel.sensorCurrentMa?.toFixed(2) || 'N/A'}mA</TableCell>
+                          <TableCell>{panel.currentOutput || 0} W</TableCell>
+                          <TableCell>{panel.sensorVoltage?.toFixed(2) || 'N/A'} V</TableCell>
+                          <TableCell>{panel.sensorCurrentMa !== null && panel.sensorCurrentMa !== undefined ? (panel.sensorCurrentMa / 1000).toFixed(3) : 'N/A'} A</TableCell>
                           <TableCell>{panel.temperature?.toFixed(1) || '0'}°C</TableCell>
                           <TableCell className="text-muted-foreground">
                             {panel.lastChecked ? format(new Date(panel.lastChecked), 'MMM dd, HH:mm') : 'N/A'}
@@ -408,65 +482,59 @@ export default function PanelGrid() {
         </Tabs>
       )}
 
-      {/* Panel Details Sidebar */}
-      {selectedPanel && (
+      {/* Row Details Sidebar */}
+      {selectedRow && (
         <Card className="fixed right-6 top-20 w-80 z-50 shadow-xl">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle>{selectedPanel.panelId || selectedPanel.id}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedPanel(null)}>×</Button>
+              <CardTitle>Zone {selectedRow.zone} - Row {selectedRow.row}</CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{selectedRow.deviceId || 'No ESP'}</span>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedRowKey(null)}>x</Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status</span>
-              <Badge variant="outline" className={statusBadgeColors[selectedPanel.status] || 'bg-gray-100'}>
-                {selectedPanel.status}
+              <Badge variant="outline" className={statusBadgeColors[selectedRow.status] || 'bg-gray-100'}>
+                {selectedRow.status}
               </Badge>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Zone</span>
-              <span>Zone {selectedPanel.zone?.name || 'N/A'}</span>
+              <span className="text-muted-foreground">ESP Device</span>
+              <span>{selectedRow.deviceId || 'N/A'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Efficiency</span>
-              <span>{selectedPanel.efficiency?.toFixed(1) || '0'}%</span>
+              <span>{selectedRow.efficiency.toFixed(1)}%</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Output</span>
-              <span>{(selectedPanel.currentOutput || 0)}W / {(selectedPanel.maxOutput || 0)}W</span>
+              <span className="text-muted-foreground">Power Generated</span>
+              <span>{selectedRow.totalOutputW.toFixed(2)} W / {selectedRow.totalMaxOutputW.toFixed(2)} W</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Temperature</span>
-              <span>{(selectedPanel.temperature || 0).toFixed(1)}°C</span>
+              <span className="text-muted-foreground">Row Current</span>
+              <span>{selectedRow.currentA.toFixed(3)} A</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Inverter</span>
-              <span>{selectedPanel.inverterGroup || 'N/A'}</span>
+              <span className="text-muted-foreground">Row Voltage</span>
+              <span>{selectedRow.voltageV.toFixed(2)} V</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Device</span>
-              <span>{selectedPanel.sensorDeviceId || 'N/A'}</span>
+              <span className="text-muted-foreground">Row Power</span>
+              <span>{selectedRow.powerW.toFixed(2)} W</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">String</span>
-              <span>{selectedPanel.stringId || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Voltage</span>
-              <span>{selectedPanel.sensorVoltage?.toFixed(2) || 'N/A'}V</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Current</span>
-              <span>{selectedPanel.sensorCurrentMa?.toFixed(2) || 'N/A'}mA</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Sensor Updated</span>
-              <span>
-                {selectedPanel.sensorLastUpdated
-                  ? format(new Date(selectedPanel.sensorLastUpdated), 'MMM dd, HH:mm:ss')
-                  : 'N/A'}
-              </span>
+            <div className="pt-2">
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">Panels in this row</p>
+              <div className="space-y-1">
+                {selectedRow.panels.map((panel) => (
+                  <div key={panel.id} className="flex items-center justify-between rounded border px-2 py-1">
+                    <span>{panel.panelId}</span>
+                    <span className="text-xs">{panel.currentOutput.toFixed(2)} W</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -474,4 +542,3 @@ export default function PanelGrid() {
     </div>
   );
 }
-

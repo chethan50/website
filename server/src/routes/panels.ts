@@ -3,7 +3,8 @@ import prisma from '../db.js';
 
 const router = Router();
 const DEVICE_ONLINE_THRESHOLD_MS = 30 * 1000;
-const MIN_HEALTHY_PANEL_VOLTAGE = Number(process.env.MIN_HEALTHY_PANEL_VOLTAGE || 5);
+const MIN_HEALTHY_PANEL_VOLTAGE = Number(process.env.MIN_HEALTHY_PANEL_VOLTAGE || 6);
+const MIN_WARNING_PANEL_VOLTAGE = Number(process.env.MIN_WARNING_PANEL_VOLTAGE || 4.5);
 
 // Each ESP32 controls a series string of panels.
 const deviceToPanelMap: Record<string, string[]> = {
@@ -263,9 +264,12 @@ router.get('/live-status', async (_req: Request, res: Response) => {
       let status: 'healthy' | 'warning' | 'fault' | 'offline' = 'offline';
       if (online) {
         status = 'healthy';
-        if ((device?.latestPowerMw || 0) <= 0 || (perPanelVoltage !== null && perPanelVoltage <= 0)) {
+        if (perPanelVoltage !== null && perPanelVoltage < MIN_WARNING_PANEL_VOLTAGE) {
           status = 'fault';
-        } else if ((perPanelVoltage !== null && perPanelVoltage < MIN_HEALTHY_PANEL_VOLTAGE) || (device?.latestPowerMw || 0) < 1000) {
+        } else if (
+          (perPanelVoltage !== null && perPanelVoltage < MIN_HEALTHY_PANEL_VOLTAGE) ||
+          (device?.latestPowerMw || 0) <= 0
+        ) {
           status = 'warning';
         }
       }
@@ -513,8 +517,8 @@ router.post('/sensor-update', async (req: Request, res: Response) => {
       const efficiency = panel.maxOutput > 0 ? (powerPerPanelW / panel.maxOutput) * 100 : 0;
 
       let status = 'healthy';
-      if (powerPerPanelW < panel.maxOutput * 0.5) status = 'warning';
-      if (powerPerPanelW < panel.maxOutput * 0.2) status = 'fault';
+      if (voltagePerPanel < MIN_WARNING_PANEL_VOLTAGE) status = 'fault';
+      else if (voltagePerPanel < MIN_HEALTHY_PANEL_VOLTAGE || powerPerPanelW <= 0) status = 'warning';
 
       const updatedPanel = await prisma.solarPanel.update({
         where: { id: panel.id },

@@ -467,7 +467,7 @@ export default function Dashboard() {
              Efficiency: <span className="font-bold">{liveStatus.avgEfficiency.toFixed(1)}%</span></p>
           <p>ESP Devices: <span className="font-bold">{liveStatus.onlineDevices}/{liveStatus.mappedDevices}</span> online | 
              Avg Voltage: <span className="font-bold">{liveStatus.averageVoltage.toFixed(2)} V</span> | 
-             Avg Current: <span className="font-bold">{liveStatus.averageCurrentMa.toFixed(2)} mA</span></p>
+             Avg Current: <span className="font-bold">{(liveStatus.averageCurrentMa / 1000).toFixed(3)} A</span></p>
           <p className="text-xs mt-2 text-blue-600 dark:text-blue-300">
             {liveStatus.latestDeviceSeenAt
               ? `Last ESP update: ${new Date(liveStatus.latestDeviceSeenAt).toLocaleTimeString()}`
@@ -490,7 +490,7 @@ export default function Dashboard() {
                 <p className="font-semibold uppercase">{device.label}</p>
                 <p>{device.online ? 'Online' : 'Offline'}</p>
                 <p>V: {device.voltage !== null ? `${device.voltage.toFixed(2)} V` : 'N/A'}</p>
-                <p>I: {device.currentMa !== null ? `${device.currentMa.toFixed(2)} mA` : 'N/A'}</p>
+                <p>I: {device.currentMa !== null ? `${(device.currentMa / 1000).toFixed(3)} A` : 'N/A'}</p>
                 <p>P: {device.powerMw !== null ? `${(device.powerMw / 1000).toFixed(2)} W` : 'N/A'}</p>
               </div>
             ))}
