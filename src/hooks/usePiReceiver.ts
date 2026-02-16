@@ -18,7 +18,7 @@ export interface UsePiReceiverReturn extends PiReceiverState {
 }
 
 // Default URL - can be configured via environment variable or user input
-const DEFAULT_PI_RECEIVER_URL = import.meta.env.VITE_PI_RECEIVER_URL || 'http://localhost:5000';
+const DEFAULT_PI_RECEIVER_URL = import.meta.env.VITE_PI_RECEIVER_URL || 'http://localhost:3000';
 
 export function usePiReceiver(): UsePiReceiverReturn {
   const [isConnected, setIsConnected] = useState(false);

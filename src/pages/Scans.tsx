@@ -67,6 +67,7 @@ interface SolarScanFromAPI {
   }>;
   createdAt: string;
   updatedAt: string;
+  isPiScan?: boolean;
 }
 
 interface SolarScanStats {
@@ -126,6 +127,7 @@ export default function Scans() {
   } = usePiReceiver();
   
   const [piUrlInput, setPiUrlInput] = useState(serverUrl);
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'api' | 'pi'>('all');
 
   const fetchScans = async () => {
     try {
@@ -201,7 +203,20 @@ export default function Scans() {
     }
   };
 
-  const filteredScans = scans.filter(scan => {
+  // Combine API scans with Pi scans for display
+  const allScans = [...piScans, ...scans];
+  
+  // Add source indicator to each scan
+  const scansWithSource = allScans.map(scan => ({
+    ...scan,
+    isPiScan: scan.id.startsWith('pi-'),
+  }));
+  
+  const filteredScans = scansWithSource.filter(scan => {
+    // Filter by source
+    if (sourceFilter === 'api' && scan.isPiScan) return false;
+    if (sourceFilter === 'pi' && !scan.isPiScan) return false;
+    
     const searchMatch = 
       scan.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (scan.deviceName && scan.deviceName.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -298,6 +313,69 @@ export default function Scans() {
         </div>
       )}
 
+      {/* Pi Receiver Connection Status */}
+      <Card className={isPiConnected ? "border-green-500/50 bg-green-500/5" : "border-yellow-500/50 bg-yellow-500/5"}>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {isPiConnecting ? (
+                <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
+              ) : isPiConnected ? (
+                <Wifi className="h-6 w-6 text-green-500" />
+              ) : (
+                <WifiOff className="h-6 w-6 text-red-500" />
+              )}
+              <div>
+                <p className="font-semibold">
+                  {isPiConnected ? "Connected to Pi Receiver" : isPiConnecting ? "Connecting..." : "Disconnected from Pi"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Server: {serverUrl} • Live Scans: {totalPiScans}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Enter Pi Receiver URL"
+                value={piUrlInput}
+                onChange={(e) => setPiUrlInput(e.target.value)}
+                className="w-[250px]"
+                disabled={isPiConnected || isPiConnecting}
+              />
+              {isPiConnected ? (
+                <Button 
+                  variant="destructive" 
+                  onClick={disconnectFromPi}
+                  disabled={isPiConnecting}
+                >
+                  <WifiOff className="mr-2 h-4 w-4" />
+                  Disconnect
+                </Button>
+              ) : (
+                <Button 
+                  onClick={() => connectToPi(piUrlInput)}
+                  disabled={isPiConnecting || !piUrlInput}
+                >
+                  {isPiConnecting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wifi className="mr-2 h-4 w-4" />
+                  )}
+                  Connect
+                </Button>
+              )}
+            </div>
+          </div>
+          
+          {piError && (
+            <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-500">
+              Connection Error: {piError}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
@@ -309,6 +387,16 @@ export default function Scans() {
             className="pl-9"
           />
         </div>
+        <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as 'all' | 'api' | 'pi')}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Source" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="api">API Scans</SelectItem>
+            <SelectItem value="pi">Live Pi Scans</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Status" />
@@ -414,6 +502,16 @@ export default function Scans() {
                     <img 
                       src={selectedScan.thermalImageUrl} 
                       alt="Thermal" 
+                      className="mt-1 w-full h-48 object-cover rounded-md"
+                    />
+                  </div>
+                )}
+                {selectedScan.rgbImageUrl && (
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-muted-foreground">RGB Capture</label>
+                    <img
+                      src={selectedScan.rgbImageUrl}
+                      alt="RGB"
                       className="mt-1 w-full h-48 object-cover rounded-md"
                     />
                   </div>
@@ -535,7 +633,12 @@ export default function Scans() {
                       <AlertTriangle className="h-4 w-4 text-orange-500" />
                       <span>{scan.dustyPanelCount} dusty</span>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-2">
+                      {scan.isPiScan && (
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/30">
+                          LIVE
+                        </Badge>
+                      )}
                       {scan.severity && (
                         <Badge className={severityColors[scan.severity] || severityColors.LOW}>
                           {scan.severity}

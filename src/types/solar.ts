@@ -186,6 +186,7 @@ export interface SolarScan {
   riskScore: number | null;
   severity: ScanSeverity | null;
   thermalImageUrl: string | null;
+  rgbImageUrl?: string | null;
   
   // Summary counts
   dustyPanelCount: number;
@@ -236,15 +237,19 @@ export interface PiPanelCrop {
   panel_number: string;
   status: 'CLEAN' | 'DUSTY' | 'FAULTY' | 'UNKNOWN';
   has_dust: boolean;
-  image_b64: string;
+  image_b64?: string;
+  web_path?: string | null;
 }
 
 export interface PiAnalysisResult {
+  id?: string;
   capture_id: string;
   timestamp: string;
+  received_at?: string;
   report: PiReport;
   rgb_stats: PiRgbStats;
-  frame_b64: string;
+  frame_b64?: string;
+  main_image_web?: string | null;
   panel_crops: PiPanelCrop[];
 }
 
@@ -272,6 +277,7 @@ export function convertPiResultToSolarScan(piResult: PiAnalysisResult): SolarSca
     riskScore: 100 - piResult.report.health_score,
     severity: severity,
     thermalImageUrl: null,
+    rgbImageUrl: piResult.main_image_web || null,
     dustyPanelCount: dustyCount,
     cleanPanelCount: cleanCount,
     totalPanels: totalPanels,
@@ -286,13 +292,13 @@ export function convertPiResultToSolarScan(piResult: PiAnalysisResult): SolarSca
       y1: 0,
       x2: 100,
       y2: 100,
-      cropImageUrl: null,
+      cropImageUrl: crop.web_path ?? null,
       faultType: crop.has_dust ? 'dust' : null,
       confidence: null,
       solarPanelId: null,
-      createdAt: new Date().toISOString(),
+      createdAt: piResult.received_at || new Date().toISOString(),
     })),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: piResult.received_at || new Date().toISOString(),
+    updatedAt: piResult.received_at || new Date().toISOString(),
   };
 }

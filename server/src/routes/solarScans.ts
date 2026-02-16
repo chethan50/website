@@ -41,7 +41,6 @@ router.post('/', async (req: Request, res: Response) => {
         riskScore: thermal?.risk_score || null,
         severity: thermal?.severity || null,
         thermalImageUrl: thermalImage || null,
-        rgbImageUrl: rgbImage || null,
         
         // Summary counts
         dustyPanelCount,
@@ -66,7 +65,7 @@ router.post('/', async (req: Request, res: Response) => {
               x1: panel.x1 || panel.bbox?.[0] || 0,
               y1: panel.y1 || panel.bbox?.[1] || 0,
               x2: panel.x2 || panel.bbox?.[2] || 0,
-              y2: panel.y3 || panel.bbox?.[3] || 0,
+              y2: panel.y2 || panel.bbox?.[3] || 0,
               cropImageUrl: panel.crop || panel.cropImageUrl || null,
               faultType: panel.faultType || null,
               confidence: panel.confidence || null,
