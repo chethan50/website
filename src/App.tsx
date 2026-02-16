@@ -12,6 +12,7 @@ import Tickets from "./pages/Tickets";
 import Analytics from "./pages/Analytics";
 import Technicians from "./pages/Technicians";
 import Settings from "./pages/Settings";
+import Scans from "./pages/Scans";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,9 +30,10 @@ const App = () => (
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/panels" element={<PanelGrid />} />
               <Route path="/tickets" element={<Tickets />} />
-              <Route path="/analytics" element={<Analytics />} />
+<Route path="/analytics" element={<Analytics />} />
               <Route path="/technicians" element={<Technicians />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/scans" element={<Scans />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </MainLayout>

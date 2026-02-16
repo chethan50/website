@@ -137,3 +137,162 @@ export interface AnalyticsData {
     avgResolutionTime: number; // hours
   };
 }
+
+// =====================================================
+// RASPBERRY PI SOLAR SCAN TYPES
+// =====================================================
+
+export type ScanSeverity = 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
+export type ScanStatus = 'pending' | 'processed' | 'archived';
+export type PanelDetectionStatus = 'CLEAN' | 'DUSTY' | 'FAULTY' | 'UNKNOWN';
+
+export interface ThermalData {
+  minTemp: number;
+  maxTemp: number;
+  meanTemp: number;
+  delta: number;
+  riskScore: number;
+  severity: ScanSeverity;
+  timestamp: string;
+}
+
+export interface PanelDetection {
+  id: string;
+  scanId: string;
+  panelNumber: string;
+  status: PanelDetectionStatus;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  cropImageUrl: string | null;
+  faultType: string | null;
+  confidence: number | null;
+  solarPanelId: string | null;
+  createdAt: string;
+}
+
+export interface SolarScan {
+  id: string;
+  timestamp: string;
+  priority: 'HIGH' | 'MEDIUM' | 'NORMAL';
+  status: ScanStatus;
+  
+  // Thermal analysis data
+  thermalMinTemp: number | null;
+  thermalMaxTemp: number | null;
+  thermalMeanTemp: number | null;
+  thermalDelta: number | null;
+  riskScore: number | null;
+  severity: ScanSeverity | null;
+  thermalImageUrl: string | null;
+  
+  // Summary counts
+  dustyPanelCount: number;
+  cleanPanelCount: number;
+  totalPanels: number;
+  
+  // Source device info
+  deviceId: string | null;
+  deviceName: string | null;
+  
+  // Relations
+  panelDetections: PanelDetection[];
+  
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SolarScanStats {
+  totalScans: number;
+  pendingScans: number;
+  processedScans: number;
+  criticalScans: number;
+  highRiskScans: number;
+  avgThermalDelta: number;
+}
+
+// =====================================================
+// RASPBERRY PI RECEIVER TYPES
+// =====================================================
+
+export interface PiReport {
+  health_score: number;
+  priority: 'HIGH' | 'MEDIUM' | 'NORMAL';
+  recommendation: string;
+  timeframe: string;
+  summary: string;
+  root_cause: string;
+  impact_assessment: string;
+}
+
+export interface PiRgbStats {
+  total: number;
+  clean: number;
+  dusty: number;
+}
+
+export interface PiPanelCrop {
+  panel_number: string;
+  status: 'CLEAN' | 'DUSTY' | 'FAULTY' | 'UNKNOWN';
+  has_dust: boolean;
+  image_b64: string;
+}
+
+export interface PiAnalysisResult {
+  capture_id: string;
+  timestamp: string;
+  report: PiReport;
+  rgb_stats: PiRgbStats;
+  frame_b64: string;
+  panel_crops: PiPanelCrop[];
+}
+
+// Convert PiAnalysisResult to SolarScan format
+export function convertPiResultToSolarScan(piResult: PiAnalysisResult): SolarScan {
+  const cleanCount = piResult.rgb_stats.clean;
+  const dustyCount = piResult.rgb_stats.dusty;
+  const totalPanels = piResult.rgb_stats.total;
+  
+  // Determine severity based on health score
+  let severity: ScanSeverity = 'LOW';
+  if (piResult.report.health_score < 30) severity = 'CRITICAL';
+  else if (piResult.report.health_score < 50) severity = 'HIGH';
+  else if (piResult.report.health_score < 75) severity = 'MODERATE';
+  
+  return {
+    id: `pi-${piResult.capture_id}`,
+    timestamp: piResult.timestamp,
+    priority: piResult.report.priority,
+    status: 'pending',
+    thermalMinTemp: null,
+    thermalMaxTemp: null,
+    thermalMeanTemp: null,
+    thermalDelta: null,
+    riskScore: 100 - piResult.report.health_score,
+    severity: severity,
+    thermalImageUrl: null,
+    dustyPanelCount: dustyCount,
+    cleanPanelCount: cleanCount,
+    totalPanels: totalPanels,
+    deviceId: 'raspberry-pi',
+    deviceName: 'Raspberry Pi Scanner',
+    panelDetections: piResult.panel_crops.map((crop, index) => ({
+      id: `det-${piResult.capture_id}-${index}`,
+      scanId: `pi-${piResult.capture_id}`,
+      panelNumber: crop.panel_number,
+      status: crop.status,
+      x1: 0,
+      y1: 0,
+      x2: 100,
+      y2: 100,
+      cropImageUrl: null,
+      faultType: crop.has_dust ? 'dust' : null,
+      confidence: null,
+      solarPanelId: null,
+      createdAt: new Date().toISOString(),
+    })),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}

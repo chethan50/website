@@ -8,7 +8,8 @@ import {
   Sun,
   Leaf,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Scan
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import {
@@ -30,6 +31,7 @@ const mainNavItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Alerts', url: '/alerts', icon: AlertTriangle },
   { title: 'Panel Grid', url: '/panels', icon: Grid3X3 },
+  { title: 'Scans', url: '/scans', icon: Scan },
   { title: 'Tickets', url: '/tickets', icon: Ticket },
   { title: 'Technicians', url: '/technicians', icon: Users },
 ];

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useSocket } from '@/hooks/useSocket';
 import {
   Search,
   Clock,
@@ -16,6 +17,7 @@ import {
   MessageSquare,
   ExternalLink,
   Filter,
+  Wifi,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import {

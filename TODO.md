@@ -1,16 +1,7 @@
-# Real-Time Data Display Fix Plan
+# TODO - Raspberry Pi Integration to Scans Page
 
-## Task
-Fix the dashboard to display real-time data from ESP32 sensor updates.
-
-## Files to Modify
-1. `server/src/routes/panels.ts` - Add endpoint to track last sensor update time
-2. `src/pages/Dashboard.tsx` - Improve LivePanelsDisplay component
-
-## Steps
-1. [ ] Add /api/panels/sensor-status endpoint to track ESP32 connection status
-2. [ ] Update Dashboard LivePanelsDisplay component to show:
-    - Last time data was received from ESP32
-    - Connection status indicator
-    - More prominent real-time data display
-3. [ ] Test the implementation
+## Tasks:
+- [ ] 1. Use the usePiReceiver hook in Scans.tsx to get piScans
+- [ ] 2. Add connection status bar showing Pi receiver connection status
+- [ ] 3. Display Pi scans in the scans list with a visual indicator (e.g., "LIVE" badge)
+- [ ] 4. Combine API scans with Pi scans or show them separately

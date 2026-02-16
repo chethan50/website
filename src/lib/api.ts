@@ -221,6 +221,76 @@ export const analyticsApi = {
   getDashboard: () => apiFetch<DashboardMetrics>('/api/analytics/dashboard'),
 };
 
+// Solar Scans API (Raspberry Pi)
+export interface SolarScanFromAPI {
+  id: string;
+  timestamp: string;
+  priority: 'HIGH' | 'MEDIUM' | 'NORMAL';
+  status: 'pending' | 'processed' | 'archived';
+  thermalMinTemp: number | null;
+  thermalMaxTemp: number | null;
+  thermalMeanTemp: number | null;
+  thermalDelta: number | null;
+  riskScore: number | null;
+  severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | null;
+  thermalImageUrl: string | null;
+  dustyPanelCount: number;
+  cleanPanelCount: number;
+  totalPanels: number;
+  deviceId: string | null;
+  deviceName: string | null;
+  panelDetections: Array<{
+    id: string;
+    scanId: string;
+    panelNumber: string;
+    status: 'CLEAN' | 'DUSTY' | 'FAULTY' | 'UNKNOWN';
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    cropImageUrl: string | null;
+    faultType: string | null;
+    confidence: number | null;
+    solarPanelId: string | null;
+    createdAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SolarScanStats {
+  totalScans: number;
+  pendingScans: number;
+  processedScans: number;
+  criticalScans: number;
+  highRiskScans: number;
+  avgThermalDelta: number;
+}
+
+export const solarScansApi = {
+  getAll: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<SolarScanFromAPI[]>(`/api/solar-scans${query ? `?${query}` : ''}`);
+  },
+  
+  getById: (id: string) => apiFetch<SolarScanFromAPI>(`/api/solar-scans/${id}`),
+  
+  getLatest: () => apiFetch<SolarScanFromAPI>('/api/solar-scans/latest'),
+  
+  getStats: () => apiFetch<SolarScanStats>('/api/solar-scans/stats/summary'),
+  
+  updateStatus: (id: string, status: string) =>
+    apiFetch<SolarScanFromAPI>(`/api/solar-scans/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+    
+  delete: (id: string) =>
+    apiFetch<{ success: boolean; message: string }>(`/api/solar-scans/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
 // Health check
 export const healthCheck = () => apiFetch<{ status: string; timestamp: string }>('/health');
 
@@ -231,6 +301,7 @@ export default {
   faults: faultsApi,
   weather: weatherApi,
   analytics: analyticsApi,
+  solarScans: solarScansApi,
   health: healthCheck,
 };
 

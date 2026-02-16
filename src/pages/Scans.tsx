@@ -1,0 +1,568 @@
+import { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+import {
+  Search,
+  Clock,
+  Thermometer,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Eye,
+  Trash2,
+  RefreshCw,
+  Camera,
+  Zap,
+  Image,
+  Wifi,
+  WifiOff,
+  Loader2,
+  Radio,
+} from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { usePiReceiver } from '@/hooks/usePiReceiver';
+
+interface SolarScanFromAPI {
+  id: string;
+  timestamp: string;
+  priority: 'HIGH' | 'MEDIUM' | 'NORMAL';
+  status: 'pending' | 'processed' | 'archived';
+  thermalMinTemp: number | null;
+  thermalMaxTemp: number | null;
+  thermalMeanTemp: number | null;
+  thermalDelta: number | null;
+  riskScore: number | null;
+  severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | null;
+  thermalImageUrl: string | null;
+  rgbImageUrl: string | null;
+  dustyPanelCount: number;
+  cleanPanelCount: number;
+  totalPanels: number;
+  deviceId: string | null;
+  deviceName: string | null;
+  panelDetections: Array<{
+    id: string;
+    scanId: string;
+    panelNumber: string;
+    status: 'CLEAN' | 'DUSTY' | 'FAULTY' | 'UNKNOWN';
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    cropImageUrl: string | null;
+    faultType: string | null;
+    confidence: number | null;
+    solarPanelId: string | null;
+    createdAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SolarScanStats {
+  totalScans: number;
+  pendingScans: number;
+  processedScans: number;
+  criticalScans: number;
+  highRiskScans: number;
+  avgThermalDelta: number;
+}
+
+const severityColors: Record<string, string> = {
+  CRITICAL: 'bg-red-500/10 text-red-500 border-red-500/30',
+  HIGH: 'bg-orange-500/10 text-orange-500 border-orange-500/30',
+  MODERATE: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
+  LOW: 'bg-green-500/10 text-green-500 border-green-500/30',
+};
+
+const priorityColors: Record<string, string> = {
+  HIGH: 'bg-red-500 text-white',
+  MEDIUM: 'bg-yellow-500 text-black',
+  NORMAL: 'bg-green-500 text-white',
+};
+
+const statusColors: Record<string, string> = {
+  pending: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
+  processed: 'bg-green-500/10 text-green-500 border-green-500/30',
+  archived: 'bg-muted text-muted-foreground border-muted',
+};
+
+const panelStatusColors: Record<string, string> = {
+  CLEAN: 'bg-green-500/10 text-green-500 border-green-500/30',
+  DUSTY: 'bg-orange-500/10 text-orange-500 border-orange-500/30',
+  FAULTY: 'bg-red-500/10 text-red-500 border-red-500/30',
+  UNKNOWN: 'bg-muted text-muted-foreground border-muted',
+};
+
+export default function Scans() {
+  const [scans, setScans] = useState<SolarScanFromAPI[]>([]);
+  const [stats, setStats] = useState<SolarScanStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedScan, setSelectedScan] = useState<SolarScanFromAPI | null>(null);
+  const [scanDetailsOpen, setScanDetailsOpen] = useState(false);
+  
+  // Use Pi Receiver hook for live scans from Raspberry Pi
+  const { 
+    isConnected: isPiConnected, 
+    isConnecting: isPiConnecting, 
+    error: piError, 
+    piScans, 
+    totalPiScans, 
+    serverUrl, 
+    connect: connectToPi, 
+    disconnect: disconnectFromPi 
+  } = usePiReceiver();
+  
+  const [piUrlInput, setPiUrlInput] = useState(serverUrl);
+
+  const fetchScans = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      params.append('limit', '50');
+      
+      const response = await fetch(`/api/solar-scans?${params.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        setScans(data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch scans:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/solar-scans/stats/summary');
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch stats:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchScans();
+    fetchStats();
+  }, [statusFilter]);
+
+  const handleViewScan = (scan: SolarScanFromAPI) => {
+    setSelectedScan(scan);
+    setScanDetailsOpen(true);
+  };
+
+  const handleUpdateStatus = async (scanId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/solar-scans/${scanId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (response.ok) {
+        fetchScans();
+        fetchStats();
+      }
+    } catch (err) {
+      console.error('Failed to update scan status:', err);
+    }
+  };
+
+  const handleDeleteScan = async (scanId: string) => {
+    if (!confirm('Are you sure you want to delete this scan?')) return;
+    
+    try {
+      const response = await fetch(`/api/solar-scans/${scanId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchScans();
+        fetchStats();
+      }
+    } catch (err) {
+      console.error('Failed to delete scan:', err);
+    }
+  };
+
+  const filteredScans = scans.filter(scan => {
+    const searchMatch = 
+      scan.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (scan.deviceName && scan.deviceName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (scan.deviceId && scan.deviceId.toLowerCase().includes(searchQuery.toLowerCase()));
+    return searchMatch;
+  });
+
+  const getRelativeTime = (dateStr: string) => {
+    return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading scans...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Solar Scans</h1>
+        <p className="text-muted-foreground">
+          View and manage Raspberry Pi solar panel scans
+        </p>
+      </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <Card>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total Scans</p>
+                <p className="text-3xl font-bold">{stats.totalScans}</p>
+              </div>
+              <div className="rounded-xl bg-blue-500/10 p-3">
+                <Camera className="h-6 w-6 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Pending</p>
+                <p className="text-3xl font-bold">{stats.pendingScans}</p>
+              </div>
+              <div className="rounded-xl bg-yellow-500/10 p-3">
+                <Clock className="h-6 w-6 text-yellow-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Processed</p>
+                <p className="text-3xl font-bold">{stats.processedScans}</p>
+              </div>
+              <div className="rounded-xl bg-green-500/10 p-3">
+                <CheckCircle className="h-6 w-6 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Critical</p>
+                <p className="text-3xl font-bold text-red-500">{stats.criticalScans}</p>
+              </div>
+              <div className="rounded-xl bg-red-500/10 p-3">
+                <AlertTriangle className="h-6 w-6 text-red-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Avg Delta</p>
+                <p className="text-3xl font-bold">{stats.avgThermalDelta?.toFixed(1)}°C</p>
+              </div>
+              <div className="rounded-xl bg-orange-500/10 p-3">
+                <Thermometer className="h-6 w-6 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by ID or device name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="processed">Processed</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={() => { fetchScans(); fetchStats(); }}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Scan Details Dialog */}
+      <Dialog open={scanDetailsOpen} onOpenChange={setScanDetailsOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Scan Details</DialogTitle>
+          </DialogHeader>
+          {selectedScan && (
+            <div className="space-y-4">
+              {/* Scan Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Scan ID</label>
+                  <p className="mt-1 text-sm font-mono">{selectedScan.id.slice(0, 8)}...</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Timestamp</label>
+                  <p className="mt-1">{getRelativeTime(selectedScan.timestamp)}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge className={statusColors[selectedScan.status] || statusColors.pending}>
+                      {selectedScan.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Priority</label>
+                  <div className="mt-1">
+                    <Badge className={priorityColors[selectedScan.priority] || priorityColors.NORMAL}>
+                      {selectedScan.priority}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Device</label>
+                  <p className="mt-1">{selectedScan.deviceName || selectedScan.deviceId || 'Unknown'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Total Panels</label>
+                  <p className="mt-1">{selectedScan.totalPanels}</p>
+                </div>
+              </div>
+
+              {/* Thermal Data */}
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Thermometer className="h-4 w-4" />
+                  Thermal Analysis
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Min Temp</label>
+                    <p className="text-lg font-semibold">{selectedScan.thermalMinTemp?.toFixed(1) || 'N/A'}°C</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Max Temp</label>
+                    <p className="text-lg font-semibold">{selectedScan.thermalMaxTemp?.toFixed(1) || 'N/A'}°C</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Mean Temp</label>
+                    <p className="text-lg font-semibold">{selectedScan.thermalMeanTemp?.toFixed(1) || 'N/A'}°C</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Delta</label>
+                    <p className="text-lg font-semibold">{selectedScan.thermalDelta?.toFixed(1) || 'N/A'}°C</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-4">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Risk Score</label>
+                    <p className="text-2xl font-bold">{selectedScan.riskScore ?? 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Severity</label>
+                    <div className="mt-1">
+                      <Badge className={severityColors[selectedScan.severity || 'LOW'] || severityColors.LOW}>
+                        {selectedScan.severity || 'LOW'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                {selectedScan.thermalImageUrl && (
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-muted-foreground">Thermal Image</label>
+                    <img 
+                      src={selectedScan.thermalImageUrl} 
+                      alt="Thermal" 
+                      className="mt-1 w-full h-48 object-cover rounded-md"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Panel Summary */}
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Panel Status Summary
+                </h4>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span className="text-green-500 font-semibold">{selectedScan.cleanPanelCount}</span>
+                    <span className="text-muted-foreground">Clean</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-orange-500" />
+                    <span className="text-orange-500 font-semibold">{selectedScan.dustyPanelCount}</span>
+                    <span className="text-muted-foreground">Dusty</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panel Detections */}
+              {selectedScan.panelDetections && selectedScan.panelDetections.length > 0 && (
+                <div className="rounded-lg border p-4">
+                  <h4 className="font-medium mb-3">Panel Detections</h4>
+                  <div className="space-y-2">
+                    {selectedScan.panelDetections.map((panel) => (
+                      <div key={panel.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                        <span className="font-medium">{panel.panelNumber}</span>
+                        <Badge className={panelStatusColors[panel.status] || panelStatusColors.UNKNOWN}>
+                          {panel.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-4">
+                {selectedScan.status === 'pending' && (
+                  <Button onClick={() => handleUpdateStatus(selectedScan.id, 'processed')}>
+                    Mark as Processed
+                  </Button>
+                )}
+                {selectedScan.status === 'processed' && (
+                  <Button onClick={() => handleUpdateStatus(selectedScan.id, 'archived')}>
+                    Archive
+                  </Button>
+                )}
+                <Button variant="destructive" onClick={() => handleDeleteScan(selectedScan.id)}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Empty State */}
+      {filteredScans.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Camera className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold">No scans found</h3>
+          <p className="text-muted-foreground">
+            {scans.length === 0
+              ? 'No scans available from Raspberry Pi yet.'
+              : 'Try adjusting your filters.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredScans.map(scan => (
+            <Card key={scan.id} className="card-hover">
+              <CardContent className="p-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  {/* Left - Scan Info */}
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      'rounded-lg p-2',
+                      scan.severity === 'CRITICAL' ? 'bg-red-500/10' :
+                      scan.severity === 'HIGH' ? 'bg-orange-500/10' :
+                      scan.severity === 'MODERATE' ? 'bg-yellow-500/10' :
+                      'bg-green-500/10'
+                    )}>
+                      <Thermometer className={cn(
+                        'h-5 w-5',
+                        scan.severity === 'CRITICAL' ? 'text-red-500' :
+                        scan.severity === 'HIGH' ? 'text-orange-500' :
+                        scan.severity === 'MODERATE' ? 'text-yellow-500' :
+                        'text-green-500'
+                      )} />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{scan.deviceName || 'Unknown Device'}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {getRelativeTime(scan.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Middle - Info */}
+                  <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-muted-foreground" />
+                      <span>{scan.totalPanels} panels</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span>{scan.cleanPanelCount} clean</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-orange-500" />
+                      <span>{scan.dustyPanelCount} dusty</span>
+                    </div>
+                    <div>
+                      {scan.severity && (
+                        <Badge className={severityColors[scan.severity] || severityColors.LOW}>
+                          {scan.severity}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right - Actions */}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={statusColors[scan.status] || statusColors.pending}>
+                      {scan.status}
+                    </Badge>
+                    <Badge className={priorityColors[scan.priority] || priorityColors.NORMAL}>
+                      {scan.priority}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => handleViewScan(scan)}>
+                      <Eye className="mr-2 h-4 w-4" />
+                      View
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

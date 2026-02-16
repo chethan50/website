@@ -184,3 +184,73 @@ model EspSensorReading {
   @@index([recordedAt])
 }
 
+// =====================================================
+// RASPBERRY PI SOLAR SCAN MODELS
+// =====================================================
+
+model SolarScan {
+  id              String   @id @default(cuid())
+  timestamp       DateTime @default(now())
+  priority        String   // HIGH, MEDIUM, NORMAL
+  status          String   @default("pending") // pending, processed, archived
+  
+  // Thermal analysis data
+  thermalMinTemp  Float?
+  thermalMaxTemp  Float?
+  thermalMeanTemp Float?
+  thermalDelta    Float?
+  riskScore       Int?
+  severity        String?  // CRITICAL, HIGH, MODERATE, LOW
+  thermalImageUrl String?  // base64 encoded thermal image
+  rgbImageUrl     String?  // base64 encoded RGB image
+  
+  // Summary counts
+  dustyPanelCount Int      @default(0)
+  cleanPanelCount Int      @default(0)
+  totalPanels    Int      @default(0)
+  
+  // Source device info
+  deviceId        String?  // Raspberry Pi device ID
+  deviceName      String?  // e.g., "RPi-Camera-1"
+  
+  // Relations
+  panelDetections PanelDetection[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([timestamp])
+  @@index([status])
+  @@index([severity])
+}
+
+model PanelDetection {
+  id              String   @id @default(cuid())
+  scan            SolarScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  scanId          String
+  
+  panelNumber     String   // e.g., "P1", "P2"
+  status          String   // CLEAN, DUSTY, FAULTY
+  
+  // Location in frame
+  x1              Int
+  y1              Int
+  x2              Int
+  y2              Int
+  
+  // Cropped image (base64)
+  cropImageUrl    String?
+  
+  // Associated fault (if any)
+  faultType       String?
+  confidence      Float?
+  
+  // Link to existing solar panel if matched
+  solarPanelId    String?
+  
+  createdAt       DateTime @default(now())
+
+  @@index([scanId])
+  @@index([status])
+}
+
