@@ -170,6 +170,12 @@ const decodeBase64Image = (rawData: string) => {
   return Buffer.from(base64Data, 'base64');
 };
 
+const toDataUrl = (rawData?: string | null) => {
+  if (!rawData) return null;
+  if (rawData.startsWith('data:image/')) return rawData;
+  return `data:image/jpeg;base64,${rawData}`;
+};
+
 const getSeverityFromHealthScore = (healthScore: number): 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' => {
   if (healthScore < 30) return 'CRITICAL';
   if (healthScore < 50) return 'HIGH';
@@ -303,6 +309,8 @@ io.on('connection', (socket) => {
         // ── Save images to disk ──────────────────────────────────────────────
         let mainImageWebPath: string | null = null;
         let thermalImageWebPath: string | null = null;
+        const mainImageDataUrl = toDataUrl(data.frame_b64);
+        const thermalImageDataUrl = toDataUrl(data.thermal_b64);
 
         if (data.frame_b64) {
           try {
@@ -338,6 +346,8 @@ io.on('connection', (socket) => {
           const hasDust = crop.has_dust ?? status === 'DUSTY';
           let webPath: string | null = null;
           let thermalWebPath: string | null = null;
+          const rgbDataUrl = toDataUrl(crop.image_b64);
+          const thermalDataUrl = toDataUrl(crop.thermal_image_b64);
           const x1 = Number(crop.x1 ?? 0);
           const y1 = Number(crop.y1 ?? 0);
           const x2 = Number(crop.x2 ?? 0);
@@ -369,8 +379,8 @@ io.on('connection', (socket) => {
             panel_number: panelNumber,
             status,
             has_dust: hasDust,
-            web_path: webPath,
-            thermal_web_path: thermalWebPath,
+            web_path: rgbDataUrl || webPath,
+            thermal_web_path: thermalDataUrl || thermalWebPath,
             x1,
             y1,
             x2,
@@ -404,8 +414,8 @@ io.on('connection', (socket) => {
             thermalMaxTemp,
             thermalMeanTemp,
             thermalDelta,
-            thermalImageUrl: thermalImageWebPath,
-            rgbImageUrl: mainImageWebPath,
+            thermalImageUrl: thermalImageDataUrl || thermalImageWebPath,
+            rgbImageUrl: mainImageDataUrl || mainImageWebPath,
             dustyPanelCount,
             cleanPanelCount,
             totalPanels,
@@ -427,7 +437,7 @@ io.on('connection', (socket) => {
                 status: crop.status,
                 x1: crop.x1, y1: crop.y1, x2: crop.x2, y2: crop.y2,
                 cropImageUrl: crop.web_path,
-                thermalCropImageUrl: crop.thermal_web_path || thermalImageWebPath,
+                thermalCropImageUrl: crop.thermal_web_path || thermalImageDataUrl || thermalImageWebPath,
                 faultType: crop.has_dust ? 'dust' : null,
                 confidence: null,
               })),
@@ -457,8 +467,8 @@ io.on('connection', (socket) => {
             genai_insights: data.report.genai_insights ?? '',
           },
           rgb_stats: { total: totalPanels, clean: cleanPanelCount, dusty: dustyPanelCount },
-          main_image_web: mainImageWebPath,
-          thermal_image_web: thermalImageWebPath,
+          main_image_web: mainImageDataUrl || mainImageWebPath,
+          thermal_image_web: thermalImageDataUrl || thermalImageWebPath,
           thermal: {
             min_temp: thermalMinTemp,
             max_temp: thermalMaxTemp,

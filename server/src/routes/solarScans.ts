@@ -5,13 +5,15 @@ const router = Router();
 
 const mapScanWithAiReport = (scan: any) => ({
   ...scan,
-  aiReport: scan.aiHealthScore == null ? null : {
-    healthScore: scan.aiHealthScore,
-    recommendation: scan.aiRecommendation || '',
-    summary: scan.aiSummary || '',
-    rootCause: scan.aiRootCause || '',
-    impactAssessment: scan.aiImpactAssessment || '',
-    timeframe: scan.aiTimeframe || '',
+  aiReport: {
+    healthScore:
+      scan.aiHealthScore ??
+      (scan.riskScore != null ? Math.max(0, Math.min(100, 100 - scan.riskScore)) : 0),
+    recommendation: scan.aiRecommendation || 'CONTINUE_MONITORING',
+    summary: scan.aiSummary || 'AI summary unavailable for this scan.',
+    rootCause: scan.aiRootCause || 'Not provided',
+    impactAssessment: scan.aiImpactAssessment || 'Not provided',
+    timeframe: scan.aiTimeframe || 'Next routine inspection cycle',
     source: scan.aiSource || 'fallback',
     baselineAware: Boolean(scan.aiBaselineAware),
     deviationFromBaseline: scan.aiDeviationFromBaseline || 'N/A',
